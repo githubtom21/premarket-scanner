@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pre-Market Scanner</title>
+<style>
+  :root {
+    --bg: #0c0e10;
+    --surface: #13161a;
+    --surface2: #1a1e23;
+    --surface3: #1f242a;
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.11);
+    --text: #e4e8ed;
+    --muted: #7a8290;
+    --dim: #42484f;
+    --green: #22c55e;
+    --green-dim: #16a34a;
+    --green-bg: rgba(34,197,94,0.07);
+    --green-border: rgba(34,197,94,0.22);
+    --red: #f04444;
+    --red-bg: rgba(240,68,68,0.07);
+    --red-border: rgba(240,68,68,0.2);
+    --amber: #f59e0b;
+    --amber-bg: rgba(245,158,11,0.07);
+    --amber-border: rgba(245,158,11,0.22);
+    --blue: #4a9eff;
+    --blue-bg: rgba(74,158,255,0.07);
+    --blue-border: rgba(74,158,255,0.2);
+    --purple: #a78bfa;
+    --purple-bg: rgba(167,139,250,0.07);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+  .shell { max-width: 1120px; margin: 0 auto; padding: 36px 24px 80px; }
+
+  /* Header */
+  .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 30px; flex-wrap: wrap; }
+  .eyebrow { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 7px; font-weight: 500; }
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.03em; color: var(--text); }
+  .subtitle { font-size: 12px; color: var(--dim); margin-top: 5px; font-family: monospace; }
+
+  .scan-btn {
+    display: flex; align-items: center; gap: 9px;
+    padding: 12px 24px; background: var(--surface2);
+    border: 1px solid var(--border2); border-radius: 10px;
+    color: var(--text); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .scan-btn:hover:not(:disabled) { background: var(--surface3); border-color: rgba(255,255,255,0.18); }
+  .scan-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .led.pulse { animation: pulse 0.9s ease-in-out infinite; background: var(--amber); }
+
+  /* Filters */
+  .filters { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-right: 4px; }
+  .filter-btn {
+    font-size: 11px; padding: 5px 12px; border-radius: 20px;
+    border: 1px solid var(--border2); background: transparent;
+    color: var(--muted); cursor: pointer; transition: all 0.12s;
+  }
+  .filter-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+  .filter-btn.active { background: var(--surface2); color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+  /* Empty */
+  .empty { border: 1px dashed var(--border2); border-radius: 14px; padding: 70px 32px; text-align: center; }
+  .empty-icon { font-size: 42px; margin-bottom: 18px; }
+  .empty h2 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .empty p { font-size: 13px; color: var(--muted); line-height: 1.7; max-width: 420px; margin: 0 auto; }
+  .empty ul { font-size: 13px; color: var(--muted); line-height: 2; list-style: none; margin-top: 14px; }
+  .empty ul li::before { content: '→ '; color: var(--dim); }
+
+  /* Loading */
+  .loading-box { border: 1px solid var(--border); border-radius: 14px; padding: 36px; }
+  .step { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+  .step-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .step-icon.done { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .step-icon.active { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); animation: pulse 1s infinite; }
+  .step-icon.idle { background: var(--surface2); color: var(--dim); border: 1px solid var(--border); }
+  .step-text.active { color: var(--text); font-size: 13px; }
+  .step-text.done { color: var(--muted); font-size: 13px; }
+  .step-text.idle { color: var(--dim); font-size: 13px; }
+  .timer-line { font-size: 12px; color: var(--dim); font-family: monospace; margin-top: 14px; }
+
+  /* Error */
+  .error-box { background: var(--red-bg); border: 1px solid var(--red-border); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--red); line-height: 1.65; margin-bottom: 16px; }
+  .error-box a { color: var(--red); }
+
+  /* Market note */
+  .market-note { background: var(--blue-bg); border-left: 3px solid var(--blue); border-radius: 0 8px 8px 0; padding: 11px 14px; margin-bottom: 22px; font-size: 13px; color: var(--muted); line-height: 1.65; }
+  .market-note strong { color: var(--blue); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 3px; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 22px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; }
+  .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; font-weight: 500; }
+  .stat-value { font-family: monospace; font-size: 24px; font-weight: 700; line-height: 1; }
+  .stat-sub { font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+  /* Top pick */
+  .top-pick { background: var(--green-bg); border: 1.5px solid var(--green-border); border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; }
+  .top-pick-badge { font-size: 10px; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 10px; }
+  .top-pick-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 7px; }
+  .top-ticker { font-family: monospace; font-size: 24px; font-weight: 700; color: var(--green); }
+  .top-company { font-size: 13px; color: #86efac; }
+  .top-price { font-family: monospace; font-size: 16px; color: var(--green); }
+  .top-reason { font-size: 13px; color: #86efac; line-height: 1.65; }
+  .top-entry { font-size: 12px; color: #4ade80; margin-top: 7px; font-style: italic; opacity: 0.85; }
+
+  /* Score pills */
+  .score-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .pill { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+  .pill.green { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .pill.amber { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .pill.red { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .pill.blue { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+  .pill.purple { background: var(--purple-bg); color: var(--purple); border: 1px solid rgba(167,139,250,0.22); }
+
+  /* Table */
+  .hint { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .table-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  colgroup col:nth-child(1) { width: 9%; }
+  colgroup col:nth-child(2) { width: 16%; }
+  colgroup col:nth-child(3) { width: 10%; }
+  colgroup col:nth-child(4) { width: 9%; }
+  colgroup col:nth-child(5) { width: 13%; }
+  colgroup col:nth-child(6) { width: 10%; }
+  colgroup col:nth-child(7) { width: 15%; }
+  colgroup col:nth-child(8) { width: 18%; }
+  thead tr { background: var(--surface); border-bottom: 1px solid var(--border); }
+  th { padding: 9px 11px; text-align: left; font-size: 10px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+  .sort-th { cursor: pointer; user-select: none; }
+  .sort-th:hover { color: var(--muted); }
+  .sort-arrow { margin-left: 3px; opacity: 0.5; }
+  tbody tr.stock-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+  tbody tr.stock-row:last-child { border-bottom: none; }
+  tbody tr.stock-row:hover { background: var(--surface) !important; }
+  tbody tr.stock-row.is-top { background: rgba(34,197,94,0.05); }
+  td { padding: 10px 11px; vertical-align: middle; }
+  .ticker-cell { display: flex; align-items: center; gap: 5px; }
+  .t-star { font-size: 9px; color: var(--green); }
+  .t-name { font-family: monospace; font-size: 13px; font-weight: 700; }
+  .co-name { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .price-val { font-family: monospace; font-size: 13px; font-weight: 600; }
+  .chg { font-family: monospace; font-size: 13px; font-weight: 700; }
+  .chg.up { color: var(--green); }
+  .chg.dn { color: var(--red); }
+  .score-cell { font-family: monospace; font-size: 13px; font-weight: 700; }
+  .vol-wrap { display: flex; align-items: center; gap: 7px; }
+  .vol-track { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .vol-fill { height: 100%; border-radius: 2px; }
+  .vol-lbl { font-family: monospace; font-size: 11px; color: var(--muted); min-width: 30px; text-align: right; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; white-space: nowrap; }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .badge.strong { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .badge.moderate { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .badge.weak { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+  .badge.avoid { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  tr.exp-row td { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 18px 20px; }
+  .exp-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; font-size: 13px; }
+  .exp-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin-bottom: 5px; font-weight: 600; }
+  .exp-val { color: var(--muted); line-height: 1.65; }
+  .exp-meta { margin-top: 10px; font-size: 11px; color: var(--dim); font-family: monospace; line-height: 1.8; }
+  .score-bar { display: flex; gap: 3px; margin-top: 6px; }
+  .score-seg { height: 4px; flex: 1; border-radius: 1px; }
+
+  /* Footer */
+  .footer { margin-top: 18px; font-size: 11px; color: var(--dim); line-height: 1.8; }
+  .footer a { color: var(--dim); }
+
+  /* Market closed banner */
+  .closed-banner { background: var(--amber-bg); border: 1px solid var(--amber-border); border-radius: 10px; padding: 11px 14px; font-size: 12px; color: var(--amber); margin-bottom: 16px; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes fadein { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+  .fadein { animation: fadein 0.3s ease forwards; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="header">
+    <div>
+      <div class="eyebrow">US Equities · Rule-based scanner</div>
+      <h1>Unusual Volume Watchlist</h1>
+      <div class="subtitle" id="lastScan" style="display:none"></div>
+    </div>
+    <button class="scan-btn" id="scanBtn" onclick="runScan()">
+      <span class="led" id="led"></span>
+      <span id="btnLabel">Run morning scan</span>
+    </button>
+  </div>
+
+  <div id="content">
+    <div class="empty">
+      <div class="empty-icon">📊</div>
+      <h2>Ready to scan</h2>
+      <p>Pulls live prices and volume from Yahoo Finance, then scores each stock using momentum rules. Free — no API key needed.</p>
+      <ul>
+        <li>Best run during US market hours (14:30–21:00 UK)</li>
+        <li>Filters for stocks with 1.5× average volume or more</li>
+        <li>Scores on volume spike, momentum, price strength</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+<script>
+// ─────────────────────────────────────────────
+//  Signal scoring engine — pure rule-based
+// ─────────────────────────────────────────────
+
+function score(s) {
+  let pts = 0;
+  const reasons = [];
+
+  // 1. Volume ratio (max 40pts)
+  if      (s.volRatio >= 5)   { pts += 40; reasons.push('massive vol spike ('+s.volRatio.toFixed(1)+'×)'); }
+  else if (s.volRatio >= 3)   { pts += 30; reasons.push('strong vol spike ('+s.volRatio.toFixed(1)+'×)'); }
+  else if (s.volRatio >= 2)   { pts += 20; reasons.push('elevated volume ('+s.volRatio.toFixed(1)+'×)'); }
+  else if (s.volRatio >= 1.5) { pts += 10; reasons.push('above-avg volume ('+s.volRatio.toFixed(1)+'×)'); }
+
+  // 2. Price change direction & magnitude (max 30pts)
+  const chg = s.changePct;
+  if      (chg >= 10)  { pts += 30; reasons.push('breakout move (+'+chg.toFixed(1)+'%)'); }
+  else if (chg >= 5)   { pts += 22; reasons.push('strong up day (+'+chg.toFixed(1)+'%)'); }
+  else if (chg >= 2)   { pts += 14; reasons.push('positive momentum (+'+chg.toFixed(1)+'%)'); }
+  else if (chg >= 0)   { pts +=  6; reasons.push('flat/slightly up'); }
+  else if (chg >= -2)  { pts +=  2; /* small dip */ }
+  else if (chg >= -5)  { pts -=  5; reasons.push('selling pressure ('+chg.toFixed(1)+'%)'); }
+  else                 { pts -= 15; reasons.push('heavy selling ('+chg.toFixed(1)+'%)'); }
+
+  // 3. Vol × momentum combo bonus (max 15pts)
+  if (s.volRatio >= 2 && chg >= 3)  { pts += 15; reasons.push('vol + price breakout combo'); }
+  else if (s.volRatio >= 2 && chg >= 1) { pts += 8; }
+
+  // 4. Market cap context (max 10pts)
+  if (s.marketCap) {
+    if (s.marketCap >= 10e9)       { pts += 10; } // large cap — institutional vol
+    else if (s.marketCap >= 2e9)   { pts +=  6; }
+    else if (s.marketCap >= 500e6) { pts +=  3; } // mid cap
+    else                           { pts -=  5; reasons.push('small cap — higher risk'); } // small cap risky
+  }
+
+  // 5. Gap consideration — if up big, already gapped, risky chase
+  if (chg >= 15) { pts -= 10; reasons.push('extended — gap risk on entry'); }
+
+  // Map to signal
+  let signal, entry;
+  if      (pts >= 60) { signal = 'strong';   }
+  else if (pts >= 35) { signal = 'moderate'; }
+  else if (pts >= 15) { signal = 'weak';     }
+  else                { signal = 'avoid';    }
+
+  // Entry note
+  const p = s.price;
+  if (signal === 'strong') {
+    const stop   = +(p * 0.975).toFixed(2);
+    const target = +(p * 1.06).toFixed(2);
+    entry = `Buy near $${p.toFixed(2)}, stop $${stop}, target $${target} (+6%)`;
+  } else if (signal === 'moderate') {
+    const stop   = +(p * 0.97).toFixed(2);
+    const target = +(p * 1.04).toFixed(2);
+    entry = `Wait for pullback confirmation, stop $${stop}, target $${target}`;
+  } else if (signal === 'weak') {
+    entry = 'Low conviction — watch for stronger catalyst or volume follow-through';
+  } else {
+    entry = 'Avoid — insufficient setup or adverse price action';
+  }
+
+  // Rationale
+  const rationale = buildRationale(s, signal, reasons, pts);
+
+  return { signal, pts, reasons, entry, rationale };
+}
+
+function buildRationale(s, signal, reasons, pts) {
+  const lines = [];
+  if (signal === 'strong') {
+    lines.push(`Strong convergence of volume and price action makes this a high-conviction setup. ${reasons.slice(0,2).join(', ')}.`);
+    lines.push(`Volume at ${s.volRatio.toFixed(1)}× average suggests institutional participation. Price is responding positively, confirming the move.`);
+  } else if (signal === 'moderate') {
+    lines.push(`Decent setup but not all signals align — ${reasons.slice(0,2).join(', ')}.`);
+    lines.push(`Worth watching for a clean entry on any intraday pullback rather than chasing the open.`);
+  } else if (signal === 'weak') {
+    lines.push(`Volume spike present (${s.volRatio.toFixed(1)}×) but price action is underwhelming. Could be distribution rather than accumulation.`);
+    lines.push(`No clear catalyst visible from price movement. Low conviction for a long — wait for confirmation.`);
+  } else {
+    const why = s.changePct < -3 ? 'Significant negative price action despite high volume suggests sellers are in control.' : 'Volume spike without supportive price action — risk of being caught in a fade.';
+    lines.push(why);
+    lines.push('Skip this for a long trade today.');
+  }
+  return lines.join(' ');
+}
+
+function marketNote(stocks) {
+  const avg = stocks.reduce((a,b) => a + b.changePct, 0) / stocks.length;
+  const upCount = stocks.filter(s => s.changePct > 0).length;
+  const ratio = upCount / stocks.length;
+  if (ratio >= 0.7 && avg >= 2)  return `Broad strength — ${upCount} of ${stocks.length} unusual-volume stocks are up, average move +${avg.toFixed(1)}%. Risk-on tone.`;
+  if (ratio >= 0.55)              return `Mixed tape with slight bullish tilt — ${upCount}/${stocks.length} stocks positive, avg move ${avg>=0?'+':''}${avg.toFixed(1)}%.`;
+  if (ratio < 0.4 && avg <= -1)  return `Risk-off: majority of unusual-volume stocks are selling off. Be selective on longs.`;
+  return `Choppy conditions — volume is elevated but direction is mixed across sectors.`;
+}
+
+// ─────────────────────────────────────────────
+//  Yahoo Finance fetch
+// ─────────────────────────────────────────────
+
+function fmtVol(n) {
+  if (!n) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return ''+n;
+}
+
+async function fetchStocks() {
+  // Detect if running from file:// — browsers block all external fetches from local files
+  if (location.protocol === 'file:') {
+    throw new Error('FILE_PROTOCOL');
+  }
+
+  const TICKERS = [
+    'NVDA','TSLA','AMD','AAPL','META','AMZN','GOOGL','MSFT','NFLX','AVGO',
+    'ARM','MU','SMCI','INTC','QCOM','MRVL','AMAT','KLAC','LRCX',
+    'PLTR','HOOD','COIN','MSTR','RIOT','MARA','CORZ','HUT',
+    'RIVN','LCID','NIO','XPEV','LI','JOBY','ACHR',
+    'SOFI','AFRM','UPST','SQ','PYPL','NU','APP','RBLX',
+    'SNAP','PINS','RDDT','SPOT','ROKU','DIS','WBD',
+    'GME','AMC','SPCE','SOUN','BBAI','AIXI',
+    'SPY','QQQ','TQQQ','SOXL','UPRO','TNA','FAS','LABU',
+    'XOM','CVX','OXY','COP','MRO','DVN','HAL','SLB',
+    'MRNA','BNTX','PFE','NVAX','SAVA','ACAD','ALNY',
+    'BAC','JPM','GS','MS','C','WFC','SCHW',
+    'F','GM','STLA','RACE',
+  ].filter((v,i,a) => a.indexOf(v) === i);
+
+  const FIELDS = 'regularMarketPrice,regularMarketChangePercent,regularMarketVolume,averageDailyVolume3Month,shortName,longName,sector,marketCap';
+  const BATCH = 40;
+  const batches = [];
+  for (let i = 0; i < TICKERS.length; i += BATCH) batches.push(TICKERS.slice(i, i + BATCH));
+
+  async function tryUrl(url) {
+    const res = await Promise.race([
+      fetch(url, { cache: 'no-cache' }),
+      new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 9000))
+    ]);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    if (!text.trim().startsWith('{') && !text.trim().startsWith('[')) throw new Error('Not JSON');
+    return JSON.parse(text);
+  }
+
+  async function fetchBatch(symbols) {
+    const qs = symbols.join(',');
+    const target = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${qs}&fields=${FIELDS}&lang=en-US&region=US`;
+    const urls = [
+      `https://corsproxy.io/?${encodeURIComponent(target)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+      `https://thingproxy.freeboard.io/fetch/${target}`,
+    ];
+    for (const url of urls) {
+      try {
+        const json = await tryUrl(url);
+        return json?.quoteResponse?.result ?? [];
+      } catch(e) { /* try next */ }
+    }
+    return [];
+  }
+
+  const results = (await Promise.all(batches.map(fetchBatch))).flat();
+
+  const stocks = results
+    .filter(q => q.regularMarketVolume && q.averageDailyVolume3Month && q.regularMarketPrice)
+    .map(q => ({
+      ticker:    q.symbol,
+      company:   (q.shortName || q.longName || q.symbol).slice(0, 28),
+      price:     q.regularMarketPrice,
+      changePct: q.regularMarketChangePercent || 0,
+      volume:    fmtVol(q.regularMarketVolume),
+      avgVolume: fmtVol(q.averageDailyVolume3Month),
+      volRatio:  q.regularMarketVolume / q.averageDailyVolume3Month,
+      sector:    q.sector || '—',
+      marketCap: q.marketCap || null,
+    }))
+    .filter(q => q.volRatio >= 1.5)
+    .sort((a, b) => b.volRatio - a.volRatio)
+    .slice(0, 15);
+
+  if (!stocks.length) throw new Error('No unusual volume stocks found — market may be closed or pre-market (run 14:30–21:00 UK time).');
+  return stocks;
+}
+
+// ─────────────────────────────────────────────
+//  Render
+// ─────────────────────────────────────────────
+
+let allStocks = [];
+let sortKey = 'pts';
+let sortDir = -1;
+let activeFilter = 'all';
+let expandedIdx = null;
+
+function volColor(r) {
+  if (r >= 3) return '#22c55e';
+  if (r >= 2) return '#f59e0b';
+  return '#4a9eff';
+}
+
+function volBarHTML(r) {
+  const pct = Math.min((r/6)*100, 100);
+  return `<div class="vol-wrap">
+    <div class="vol-track"><div class="vol-fill" style="width:${pct}%;background:${volColor(r)}"></div></div>
+    <span class="vol-lbl">${r.toFixed(1)}×</span>
+  </div>`;
+}
+
+function badgeHTML(sig) {
+  const c = {strong:'#22c55e',moderate:'#f59e0b',weak:'#7a8290',avoid:'#f04444'};
+  const l = {strong:'Strong long',moderate:'Moderate',weak:'Weak',avoid:'Avoid'};
+  return `<span class="badge ${sig}"><span class="badge-dot" style="background:${c[sig]||c.weak}"></span>${l[sig]||sig}</span>`;
+}
+
+function scoreColor(pts) {
+  if (pts >= 60) return '#22c55e';
+  if (pts >= 35) return '#f59e0b';
+  if (pts >= 15) return '#7a8290';
+  return '#f04444';
+}
+
+function render() {
+  let stocks = allStocks.filter(s => {
+    if (activeFilter === 'all') return true;
+    return s.signal === activeFilter;
+  });
+  stocks = [...stocks].sort((a,b) => {
+    if (sortKey === 'pts')       return sortDir * (b.pts - a.pts);
+    if (sortKey === 'volRatio')  return sortDir * (b.volRatio - a.volRatio);
+    if (sortKey === 'changePct') return sortDir * (b.changePct - a.changePct);
+    if (sortKey === 'price')     return sortDir * (b.price - a.price);
+    return 0;
+  });
+
+  const top = allStocks.slice().sort((a,b) => b.pts - a.pts)[0];
+  const strongN  = allStocks.filter(s=>s.signal==='strong').length;
+  const avoidN   = allStocks.filter(s=>s.signal==='avoid').length;
+  const topVolS  = allStocks.slice().sort((a,b)=>b.volRatio-a.volRatio)[0];
+  const note     = marketNote(allStocks);
+  const avgChg   = allStocks.reduce((a,b)=>a+b.changePct,0)/allStocks.length;
+
+  let html = '<div class="fadein">';
+
+  // Market closed warning if outside hours
+  const now = new Date();
+  const utcH = now.getUTCHours(), utcM = now.getUTCMinutes();
+  const utcMins = utcH*60+utcM;
+  const etOffset = isDST() ? 4 : 5;
+  const etMins = ((utcMins - etOffset*60) + 1440) % 1440;
+  const marketOpen = etMins >= 9*60+30 && etMins < 16*60;
+  if (!marketOpen) {
+    html += `<div class="closed-banner">⚠ US market is currently closed. Showing last-close prices. For live pre-market data, run this between 14:30–21:00 UK time.</div>`;
+  }
+
+  html += `<div class="market-note"><strong>Market tone</strong>${note}</div>`;
+
+  html += `<div class="stats">
+    <div class="stat"><div class="stat-label">Stocks flagged</div><div class="stat-value">${allStocks.length}</div><div class="stat-sub">≥1.5× avg vol</div></div>
+    <div class="stat"><div class="stat-label">Strong setups</div><div class="stat-value" style="color:#22c55e">${strongN}</div><div class="stat-sub">score ≥ 60</div></div>
+    <div class="stat"><div class="stat-label">Avg move</div><div class="stat-value" style="color:${avgChg>=0?'#22c55e':'#f04444'}">${avgChg>=0?'+':''}${avgChg.toFixed(1)}%</div><div class="stat-sub">today</div></div>
+    <div class="stat"><div class="stat-label">Top vol spike</div><div class="stat-value" style="color:#4a9eff">${topVolS.volRatio.toFixed(1)}×</div><div class="stat-sub">${topVolS.ticker}</div></div>
+  </div>`;
+
+  if (top && top.signal !== 'avoid') {
+    html += `<div class="top-pick">
+      <div class="top-pick-badge">★ Top pick today · score ${top.pts}</div>
+      <div class="top-pick-row">
+        <span class="top-ticker">${top.ticker}</span>
+        <span class="top-company">${top.company}</span>
+        <span class="top-price">$${top.price.toFixed(2)}</span>
+        <span class="chg ${top.changePct>=0?'up':'dn'}">${top.changePct>=0?'+':''}${top.changePct.toFixed(1)}%</span>
+      </div>
+      <div class="top-reason">${top.rationale}</div>
+      <div class="top-entry">${top.entry}</div>
+      <div class="score-pills">${top.reasons.map(r=>`<span class="pill ${top.signal==='strong'?'green':top.signal==='moderate'?'amber':'blue'}">${r}</span>`).join('')}</div>
+    </div>`;
+  }
+
+  // Filter bar
+  const counts = {all: allStocks.length};
+  ['strong','moderate','weak','avoid'].forEach(s => counts[s] = allStocks.filter(x=>x.signal===s).length);
+  html += `<div class="filters" id="filterBar">
+    <span class="filter-label">Show:</span>
+    ${['all','strong','moderate','weak','avoid'].map(f =>
+      `<button class="filter-btn${activeFilter===f?' active':''}" onclick="setFilter('${f}')">${f==='all'?'All ('+counts.all+')':f.charAt(0).toUpperCase()+f.slice(1)+' ('+counts[f]+')'}</button>`
+    ).join('')}
+  </div>`;
+
+  html += `<div class="hint">Click any row to expand · sort by column headers</div>`;
+  html += `<div class="table-wrap"><table>
+    <colgroup><col><col><col><col><col><col><col><col></colgroup>
+    <thead><tr>
+      <th>Ticker</th>
+      <th>Company</th>
+      <th class="sort-th" onclick="setSort('price')">Price <span class="sort-arrow">${sortKey==='price'?(sortDir>0?'↑':'↓'):'↕'}</span></th>
+      <th class="sort-th" onclick="setSort('changePct')">Chg% <span class="sort-arrow">${sortKey==='changePct'?(sortDir>0?'↑':'↓'):'↕'}</span></th>
+      <th class="sort-th" onclick="setSort('volRatio')">Vol ratio <span class="sort-arrow">${sortKey==='volRatio'?(sortDir>0?'↑':'↓'):'↕'}</span></th>
+      <th class="sort-th" onclick="setSort('pts')">Score <span class="sort-arrow">${sortKey==='pts'?(sortDir>0?'↑':'↓'):'↓'}</span></th>
+      <th>Sector</th>
+      <th>Signal</th>
+    </tr></thead>
+    <tbody>`;
+
+  stocks.forEach((s,i) => {
+    const isTop = s.ticker === top?.ticker;
+    const origIdx = allStocks.indexOf(s);
+    html += `<tr class="stock-row${isTop?' is-top':''}" onclick="toggleRow(${origIdx})">
+      <td><div class="ticker-cell">${isTop?'<span class="t-star">★</span>':''}<span class="t-name">${s.ticker}</span></div></td>
+      <td><span class="co-name">${s.company}</span></td>
+      <td><span class="price-val">$${s.price.toFixed(2)}</span></td>
+      <td><span class="chg ${s.changePct>=0?'up':'dn'}">${s.changePct>=0?'+':''}${s.changePct.toFixed(1)}%</span></td>
+      <td>${volBarHTML(s.volRatio)}</td>
+      <td><span class="score-cell" style="color:${scoreColor(s.pts)}">${s.pts}</span></td>
+      <td><span class="co-name">${s.sector}</span></td>
+      <td>${badgeHTML(s.signal)}</td>
+    </tr>
+    <tr class="exp-row" id="exp-${origIdx}" style="display:none">
+      <td colspan="8">
+        <div class="exp-grid">
+          <div>
+            <div class="exp-lbl">Rationale</div>
+            <div class="exp-val">${s.rationale}</div>
+          </div>
+          <div>
+            <div class="exp-lbl">Entry note</div>
+            <div class="exp-val">${s.entry}</div>
+            <div class="exp-meta">
+              Vol today: ${s.volume}<br>
+              Avg daily vol: ${s.avgVolume}<br>
+              Vol ratio: ${s.volRatio.toFixed(2)}×
+            </div>
+          </div>
+          <div>
+            <div class="exp-lbl">Score breakdown</div>
+            <div class="score-pills" style="flex-wrap:wrap;gap:5px;display:flex">
+              ${s.reasons.map(r=>`<span class="pill ${s.signal==='strong'?'green':s.signal==='moderate'?'amber':s.signal==='avoid'?'red':'blue'}">${r}</span>`).join('')}
+            </div>
+            <div class="exp-meta" style="margin-top:10px">Total score: <strong style="color:${scoreColor(s.pts)}">${s.pts} / ~85</strong></div>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  html += `<div class="footer">
+    Prices from Yahoo Finance · Updated ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} · 
+    Signals are rule-based (volume, momentum, market cap) — not AI or financial advice. Always verify before trading.
+  </div></div>`;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+function setFilter(f) { activeFilter = f; expandedIdx = null; render(); }
+function setSort(k) {
+  if (sortKey === k) sortDir *= -1;
+  else { sortKey = k; sortDir = -1; }
+  render();
+}
+
+function toggleRow(i) {
+  if (expandedIdx !== null && expandedIdx !== i) {
+    const prev = document.getElementById('exp-'+expandedIdx);
+    if (prev) prev.style.display = 'none';
+  }
+  const row = document.getElementById('exp-'+i);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : 'table-row';
+  expandedIdx = open ? null : i;
+}
+
+function isDST() {
+  const now = new Date();
+  const jan = new Date(now.getFullYear(), 0, 1).getTimezoneOffset();
+  const jul = new Date(now.getFullYear(), 6, 1).getTimezoneOffset();
+  return now.getTimezoneOffset() < Math.max(jan, jul);
+}
+
+// ─────────────────────────────────────────────
+//  Main scan
+// ─────────────────────────────────────────────
+
+let timerInt = null;
+
+async function runScan() {
+  const btn  = document.getElementById('scanBtn');
+  const led  = document.getElementById('led');
+  const lbl  = document.getElementById('btnLabel');
+  btn.disabled = true;
+  led.className = 'led pulse';
+  lbl.textContent = 'Scanning…';
+  expandedIdx = null;
+  let secs = 0;
+  clearInterval(timerInt);
+
+  document.getElementById('content').innerHTML = `
+    <div class="loading-box">
+      <div class="step"><div class="step-icon active" id="si1">·</div><span class="step-text active" id="st1">Fetching live data from Yahoo Finance…</span></div>
+      <div class="step"><div class="step-icon idle" id="si2">·</div><span class="step-text idle" id="st2">Scoring signals…</span></div>
+      <div class="step"><div class="step-icon idle" id="si3">·</div><span class="step-text idle" id="st3">Building watchlist</span></div>
+      <div class="timer-line" id="timer">0s</div>
+    </div>`;
+
+  timerInt = setInterval(() => {
+    secs++;
+    const el = document.getElementById('timer');
+    if (el) el.textContent = secs+'s elapsed';
+  }, 1000);
+
+  function setStep(n) {
+    [1,2,3].forEach(i => {
+      const ic = document.getElementById('si'+i);
+      const tx = document.getElementById('st'+i);
+      if (!ic || !tx) return;
+      if (i < n)      { ic.className='step-icon done'; ic.textContent='✓'; tx.className='step-text done'; }
+      else if (i===n) { ic.className='step-icon active'; ic.textContent='·'; tx.className='step-text active'; }
+      else            { ic.className='step-icon idle'; ic.textContent='·'; tx.className='step-text idle'; }
+    });
+  }
+
+  try {
+    setStep(1);
+    const raw = await fetchStocks();
+
+    setStep(2);
+    allStocks = raw.map(s => {
+      const r = score(s);
+      return { ...s, ...r };
+    });
+
+    setStep(3);
+    sortKey = 'pts'; sortDir = -1; activeFilter = 'all';
+    render();
+
+    const el = document.getElementById('lastScan');
+    if (el) {
+      el.style.display = '';
+      el.textContent = `Last scanned ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} · ${allStocks.length} stocks · Yahoo Finance`;
+    }
+  } catch(e) {
+    const isFileProto = e.message === 'FILE_PROTOCOL';
+    document.getElementById('content').innerHTML = isFileProto ? `
+      <div class="error-box" style="color:#f59e0b;background:rgba(245,158,11,0.07);border-color:rgba(245,158,11,0.25)">
+        <strong>One-time setup needed</strong><br><br>
+        Your browser blocks external requests when opening HTML files directly from your hard drive.<br><br>
+        Fix it in 10 seconds:<br><br>
+        <strong>Mac/Linux:</strong> Open Terminal, run:<br>
+        <code style="background:rgba(0,0,0,0.3);padding:4px 8px;border-radius:4px;display:inline-block;margin:6px 0">cd ~/Downloads && python3 -m http.server 8080</code><br>
+        Then open <a href="http://localhost:8080/premarket-scanner.html" style="color:#f59e0b">http://localhost:8080/premarket-scanner.html</a><br><br>
+        <strong>Windows:</strong> Open Command Prompt, run:<br>
+        <code style="background:rgba(0,0,0,0.3);padding:4px 8px;border-radius:4px;display:inline-block;margin:6px 0">cd %USERPROFILE%\Downloads && python -m http.server 8080</code><br>
+        Then open <a href="http://localhost:8080/premarket-scanner.html" style="color:#f59e0b">http://localhost:8080/premarket-scanner.html</a><br><br>
+        <small style="opacity:0.7">Leave the Terminal window open while you use the scanner. You only need to do this once per session.</small>
+      </div>` : `
+      <div class="error-box">
+        <strong>Scan failed:</strong> ${e.message}
+      </div>`;
+  } finally {
+    clearInterval(timerInt);
+    btn.disabled = false;
+    led.className = 'led';
+    lbl.textContent = allStocks.length ? 'Refresh scan' : 'Run morning scan';
+  }
+}
+</script>
+</body>
+</html>
